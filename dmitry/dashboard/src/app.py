@@ -1,9 +1,10 @@
-import json
+import sys
 import secrets
 from pathlib import Path
 from typing import Optional, Any
 
 import polars as pl
+import plotly.express as px
 import streamlit as st
 import plotly.graph_objs as go
 
@@ -33,62 +34,50 @@ def pth(path: str) -> Path:
     return path_obj
 
 
-@error_handler()
-def open_config(path: str) -> dict:
-    path_obj = pth(path)
-
-    with open(str(path_obj), "r") as file:
-        return json.load(file)
-
-
-@error_handler()
-def open_df(path: str):
-    path_obj = pth(path)
-
-    df = pl.read_csv(str(path_obj), has_header=False, separator=";")
-    df = df.rename({"column_1": "dist", "column_2": "temp"})
-
-    df_clipped = df.filter(pl.col("temp").is_between(-10, 120))
-
-    return df_clipped
-
 
 def main():
-    json_path = "~/Projects/Data/COD/Config_COD.json"
-    config = open_config(json_path)
-    segments = config["SegmentCalculation"][0]["segParams"]
 
-    segments_data = {
-        "id": [],
-        "group": [],
-        "start": [],
-        "end": [],
-        "colors_by_id": [],
-        "colors_by_group": [],
-    }
-    colors_by_id = {}
-    colors_by_group = {}
-    for seg in segments:
-        for key in seg.keys():
-            if key == "id":
-                if seg[key] not in colors_by_id.keys():
-                    color = generate_secure_hex_color()
-                    colors_by_id[seg[key]] = color
-                else:
-                    color = colors_by_id[seg[key]]
-                segments_data["colors_by_id"].append(color)
-            if key == "group":
-                if seg[key] not in colors_by_group.keys():
-                    color = generate_secure_hex_color()
-                    colors_by_group[seg[key]] = color
-                else:
-                    color = colors_by_group[seg[key]]
-                segments_data["colors_by_group"].append(color)
-            segments_data[key].append(seg[key])
+    segments_path = pth("~/Projects/Data/new_COD/segments_config.csv")
+    segments_df = pl.read_csv(str(segments_path))
 
-    seg_df = pl.DataFrame(segments_data)
+    colors_id_path = pth("~/Projects/Data/new_COD/colors_by_id.csv")
+    colors_id_df = pl.read_csv(str(colors_id_path))
 
-    base_data_obj = pth("~/Projects/Data/COD/COD_data")
+    data_path = pth("~/Projects/Data/new_COD/data.csv")
+    data_df_full = pl.read_csv(str(data_path))
+
+    data_df_full = data_df_full.with_columns(
+        pl.col("timestamp")
+        .str.strptime(pl.Datetime, format="%Y:%m:%d %H-%M-%S")
+        .alias("datetime")
+    )
+
+    # data_df = data_df.filter(pl.col("id") == "1")
+    data_df = data_df_full.filter(pl.col("group") == "1")
+
+    data_to_draw = {"time": [], "temp": []}
+    available_dates = data_df.select("datetime").unique().sort("datetime")
+    for row in available_dates.iter_rows():
+        date = row[0]
+        result = data_df.filter(pl.col("datetime") == date).select(["dist", "temp"])
+
+        data_to_draw["time"].append(date)
+        data_to_draw["temp"].append(result["temp"].max())
+
+    df_draw = pl.DataFrame(data_to_draw)
+
+    # fig = px.line(df_draw, x='time', y='temp', title='Temp by time')
+    fig = px.histogram(data_df_full, x="datetime")
+
+    fig.update_layout(
+        width=1800,
+        height=800,
+        hovermode='closest'
+    )
+
+    st.plotly_chart(fig, width="content")
+
+    sys.exit(0)
 
     test_path_1 = "~/Projects/Data/COD/COD_data/00000000000050FE/therm_ch01_2025-09-21_01-26-09_i0000000000029C13.csv"
     test_path_2 = "~/Projects/Data/COD/COD_data/00000000000050FE/therm_ch01_2025-09-21_01-26-39_i0000000000029C14.csv"
@@ -142,32 +131,6 @@ def main():
     )
 
     st.plotly_chart(fig, width="content")
-
-    # line1 = alt.Chart(df1).mark_line(color="red").encode(
-    #     x=alt.X("dist:Q", scale=alt.Scale(
-    #         domain=[0, 600],
-    #         clamp=True
-    #     )),
-    #     y=alt.Y("temp:Q", scale=alt.Scale(
-    #         domain=[-10, 120],
-    #         clamp=True
-    #     )),
-    #     tooltip=["dist:Q", "temp:Q"])
-    #
-    # line2 = alt.Chart(df2).mark_line(color="green").encode(
-    #     x=alt.X("dist:Q", scale=alt.Scale(
-    #         domain=[0, 600],
-    #         clamp=True
-    #     )),
-    #     y=alt.Y("temp:Q", scale=alt.Scale(
-    #         domain=[-10, 120],
-    #         clamp=True
-    #     )),
-    #     tooltip=["dist:Q", "temp:Q"])
-    #
-    # layer_chart = alt.layer(line1, line2, seg_chart).interactive(bind_x=False).resolve_scale(y="shared").properties(width=1200, height=800)
-    #
-    # st.altair_chart(layer_chart, width="content")
 
 
 if __name__ == "__main__":
