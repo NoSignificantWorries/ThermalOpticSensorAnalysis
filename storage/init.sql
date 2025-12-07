@@ -7,8 +7,8 @@ CREATE TABLE IF NOT EXISTS config0
 (
   sensor_id UInt32,
   label Nullable(String),
-  description Nullable(string),
-  created_at DateTime DEFAULT now(),
+  description Nullable(String),
+  created_at DateTime DEFAULT now()
 )
 ENGINE = MergeTree
 ORDER BY (sensor_id)
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS group0
   sensor_id UInt32,
   group_id UInt32,
   start Float32,
-  end Float32,
+  end Float32
 )
 ENGINE = MergeTree
 ORDER BY (sensor_id, group_id)
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS segment0
   group_id UInt32,
   segment_id UInt32,
   start Float32,
-  end Float32,
+  end Float32
 )
 ENGINE = MergeTree
 ORDER BY (sensor_id, group_id, segment_id)
@@ -43,11 +43,11 @@ CREATE TABLE IF NOT EXISTS measurements
   sensor_id UInt32,
   group_id UInt32,
   distance Float32,
-  temp Float32,
+  temp Float32
 )
 ENGINE = MergeTree
 PARTITION BY toYYYYMM(timestamp)
-ORDER BY (timestamp, group_id, distance)
+ORDER BY (timestamp, group_id, sensor_id, distance)
 SETTINGS index_granularity = 8192
 COMMENT 'Main table of measurements';
 
